@@ -31,12 +31,12 @@ fun ProtocolUI() {
     val protocol = remember { ProtocolLogic() }
     val logs = remember { mutableStateListOf<String>() }
 
-    // Datos de prueba (Fase de Registro previa) [cite: 82]
+    // Datos de prueba (Fase de Registro previa)
     val idu = "usuario123"
     val pw = "password123"
-    val ds = BigInteger("123456789") // Clave privada servidor [cite: 74]
-    val qs = protocol.spec.g.multiply(ds) // Clave pública servidor [cite: 74]
-    val l = protocol.xor(protocol.h2(ds.toString()), protocol.h2(idu + pw)) // l [cite: 82]
+    val ds = BigInteger("123456789") // Clave privada servidor
+    val qs = protocol.spec.g.multiply(ds) // Clave pública servidor
+    val l = protocol.xor(protocol.h2(ds.toString()), protocol.h2(idu + pw)) // l
 
     Column(modifier = Modifier.padding(16.dp)) {
         Text("2PAKE Protocol Demo", style = MaterialTheme.typography.headlineMedium)
@@ -44,23 +44,23 @@ fun ProtocolUI() {
         Button(
             onClick = {
                 logs.clear()
-                logs.add("🚀 Iniciando Autenticación...")
+                logs.add("Iniciando Autenticación...")
 
-                // Mensaje 1: Usuario -> Servidor [cite: 91]
+                // Mensaje 1: Usuario -> Servidor
                 val msg1 = protocol.step1User(idu, pw, l, qs)
                 logs.add("U -> S: {Auth_u, CID_u, R_u}")
 
-                // Mensaje 2: Servidor -> Usuario [cite: 119]
+                // Mensaje 2: Servidor -> Usuario
                 val msg2 = protocol.step2Server(msg1, ds)
                 if (msg2 != null) {
-                    logs.add("✅ Servidor autenticó a Usuario")
+                    logs.add("Servidor autenticó a Usuario")
                     logs.add("S -> U: {Auth_s, R_s}")
 
                     // Finalización en Usuario [cite: 122]
-                    logs.add("✅ Usuario autenticó a Servidor")
-                    logs.add("🔑 Clave de Sesión (SK) establecida")
+                    logs.add("Usuario autenticó a Servidor")
+                    logs.add("Clave de Sesión (SK) establecida")
                 } else {
-                    logs.add("❌ Error de autenticación")
+                    logs.add("Error de autenticación")
                 }
             },
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
