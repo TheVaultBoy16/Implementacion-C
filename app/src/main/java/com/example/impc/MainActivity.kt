@@ -3,27 +3,23 @@ package com.example.impc
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.impc.ui.theme.ImpCTheme
+import androidx.compose.ui.unit.dp
+import com.example.impc.ui.protocol.ProtocolLogic
+import java.math.BigInteger
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
-            ImpCTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
+            MaterialTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    ProtocolUI()
                 }
             }
         }
@@ -31,17 +27,53 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
+fun ProtocolUI() {
+    val protocol = remember { ProtocolLogic() }
+    val logs = remember { mutableStateListOf<String>() }
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    ImpCTheme {
-        Greeting("Android")
+    // Datos de prueba (Fase de Registro previa) [cite: 82]
+    val idu = "usuario123"
+    val pw = "password123"
+    val ds = BigInteger("123456789") // Clave privada servidor [cite: 74]
+    val qs = protocol.spec.g.multiply(ds) // Clave pública servidor [cite: 74]
+    val l = protocol.xor(protocol.h2(ds.toString()), protocol.h2(idu + pw)) // l [cite: 82]
+
+    Column(modifier = Modifier.padding(16.dp)) {
+        Text("2PAKE Protocol Demo", style = MaterialTheme.typography.headlineMedium)
+
+        Button(
+            onClick = {
+                logs.clear()
+                logs.add("🚀 Iniciando Autenticación...")
+
+                // Mensaje 1: Usuario -> Servidor [cite: 91]
+                val msg1 = protocol.step1User(idu, pw, l, qs)
+                logs.add("U -> S: {Auth_u, CID_u, R_u}")
+
+                // Mensaje 2: Servidor -> Usuario [cite: 119]
+                val msg2 = protocol.step2Server(msg1, ds)
+                if (msg2 != null) {
+                    logs.add("✅ Servidor autenticó a Usuario")
+                    logs.add("S -> U: {Auth_s, R_s}")
+
+                    // Finalización en Usuario [cite: 122]
+                    logs.add("✅ Usuario autenticó a Servidor")
+                    logs.add("🔑 Clave de Sesión (SK) establecida")
+                } else {
+                    logs.add("❌ Error de autenticación")
+                }
+            },
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+        ) {
+            Text("Ejecutar Intercambio de Claves")
+        }
+
+        Divider()
+
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            items(logs) { log ->
+                Text(log, modifier = Modifier.padding(vertical = 4.dp))
+            }
+        }
     }
 }
