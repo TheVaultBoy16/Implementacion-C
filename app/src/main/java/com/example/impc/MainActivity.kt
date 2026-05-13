@@ -56,7 +56,7 @@ fun ProtocolUI() {
                     logs.add("Servidor autenticó a Usuario")
                     logs.add("S -> U: {Auth_s, R_s}")
 
-                    // Finalización en Usuario [cite: 122]
+                    // Finalización en Usuario
                     logs.add("Usuario autenticó a Servidor")
                     logs.add("Clave de Sesión (SK) establecida")
                 } else {
