@@ -3,18 +3,13 @@ package com.example.impc
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -29,8 +24,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
-                Surface(color = Color(0xFFF0F2F5)) {
-                    ProtocolDemoScreen()
+                Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFFF4F6F9)) {
+                    ProtocolStrictScreen()
                 }
             }
         }
@@ -38,115 +33,190 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun ProtocolDemoScreen() {
+fun ProtocolStrictScreen() {
+    val protocol = remember { ProtocolLogic() }
     val scope = rememberCoroutineScope()
     val logs = remember { mutableStateListOf<Pair<String, Color>>() }
-    var step by remember { mutableIntStateOf(0) }
     var isRunning by remember { mutableStateOf(false) }
 
-    // Inicialización de la lógica del protocolo
-    val logic = remember { ProtocolLogic() }
-    val idu = "usuario@ejemplo.com"
-    val pw = "password123"
-    // ds es la clave privada del servidor
-    val ds = remember { BigInteger("1234567890123456789012345678901234567890") }
-    // qs es la clave pública del servidor (qs = ds * P)
-    val qs = remember { logic.spec.g.multiply(ds) }
-    
-    // Preparar el parámetro L para que el servidor pueda recuperar el IDu correctamente
-    val h1ds = logic.h2(ds.toString())
-    val h2IDuPW = logic.h2(idu + pw)
-    val l = logic.xor(h1ds, h2IDuPW)
+    // Parámetros de la fase de registro según el artículo
+    val idu = "usuario_movil"
+    val pw = "mi_password_seguro"
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Demo: Protocolo 2PAKE", style = MaterialTheme.typography.headlineSmall)
-        Text("Simulación visual de intercambio de claves ECC", style = MaterialTheme.typography.bodySmall)
+    val ds = remember { BigInteger(256, java.security.SecureRandom()).mod(protocol.spec.n) }
+    val qs = remember { protocol.P.multiply(ds) }
 
-        Spacer(modifier = Modifier.height(16.dp))
+    // l = H1(ds) ⊕ H2(IDu || PW) en formato binario puro (ByteArray)
+    val l = remember {
+        val h1ds = protocol.hashToBytes(ds.toString())
+        val h2IduPw = protocol.hashToBytes(idu + pw)
+        protocol.xorBytes(h1ds, h2IduPw)
+    }
 
-        // Monitor de logs (Simula la red)
+    Column(modifier = Modifier.padding(16.dp)) {
+        Text("Handshake Mutuo 2PAKE", style = MaterialTheme.typography.headlineSmall)
+        Text("Cálculos reales sobre curvas elípticas usando bytes puros", style = MaterialTheme.typography.bodySmall)
+        Spacer(modifier = Modifier.height(12.dp))
+
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .background(Color.Black, RoundedCornerShape(8.dp))
-                .padding(8.dp)
+                .background(Color(0xFF1C1C1E), RoundedCornerShape(8.dp))
+                .padding(12.dp)
         ) {
             items(logs) { log ->
                 Text(
-                    text = "> ${log.first}",
+                    text = log.first,
                     color = log.second,
                     fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(vertical = 2.dp)
                 )
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Botón de ejecución
         Button(
             onClick = {
                 isRunning = true
                 logs.clear()
                 scope.launch {
-                    // PASO 1: CLIENTE
-                    logs.add("USUARIO: Generando r_u aleatorio..." to Color.Cyan)
-                    val msg1 = logic.step1User(idu, pw, l, qs)
-                    delay(800)
-                    
-                    logs.add("USUARIO: Calculando CID_u (Identidad Enmascarada)..." to Color.Cyan)
-                    delay(800)
-                    
-                    logs.add("USUARIO -> SERVIDOR: {Auth_u, CID_u, R_u}" to Color.Yellow)
-                    step = 1
+                    try {
+                        logs.add(" --- INICIANDO HANDSHAKE MATEMÁTICO ---" to Color.White)
+                        delay(400)
 
-                    // PASO 2: SERVIDOR
-                    delay(1200)
-                    logs.add("SERVIDOR: Verificando Auth_u y recuperando ID_u..." to Color.Green)
-                    val msg2 = logic.step2Server(msg1, ds)
-                    delay(800)
-                    
-                    if (msg2 != null) {
-                        logs.add("SERVIDOR: Generando r_s y punto R_s..." to Color.Green)
-                        logs.add("SERVIDOR -> USUARIO: {Auth_s, R_s}" to Color.Yellow)
-                        step = 2
+                        // =========================================================================
+                        // PARTE 1: USUARIO (U)
+                        // =========================================================================
+                        logs.add("\n[U] Elige aleatorio ru ∈ Zn*" to Color.Cyan)
+                        val ru = BigInteger(256, java.security.SecureRandom()).mod(protocol.spec.n)
 
-                        // PASO 3: FINALIZACIÓN
-                        delay(1200)
-                        logs.add("USUARIO: Verificando autenticidad del servidor..." to Color.Cyan)
+                        logs.add("[U] Calcula Ru = ru * P" to Color.Cyan)
+                        val Ru = protocol.P.multiply(ru)
+
+                        logs.add("[U] Calcula R = ru * Qs" to Color.Cyan)
+                        val R = qs.multiply(ru)
+
+                        val h2IduPw = protocol.hashToBytes(idu + pw)
+
+                        // l ⊕ H2(IDu || PW)
+                        val lXorH2 = protocol.xorBytes(l, h2IduPw)
+
+                        // CIDu = IDu ⊕ l ⊕ H2(IDu || PW)
+
+                        logs.add("[U] Calcula CIDu = IDu ⊕ l ⊕ H2(IDu || PW)" to Color.Cyan)
+                        val cidu = protocol.xorBytes(idu.toByteArray(Charsets.UTF_8), lXorH2)
+
+                        // Authu = H2(IDu || R || l ⊕ H2(IDu || PW))
+                        logs.add("[U] Calcula Authu = H2(IDu || R || l ⊕ H2(IDu || PW))" to Color.Cyan)
+                        val authu = protocol.hashToBytes(idu, R, lXorH2)
+
+                        logs.add(" [U -> S]: Enviado Msg 1. CIDu = ${protocol.bytesToHex(cidu).take(10)}..." to Color.Yellow)
                         delay(800)
-                        
-                        logs.add("SISTEMA: ¡Clave de Sesión (SK) acordada!" to Color.Magenta)
-                        logs.add("SISTEMA: Ahora puedes descifrar el PDF." to Color.White)
-                        step = 3
-                    } else {
-                        logs.add("ERROR: El protocolo falló en la verificación." to Color.Red)
+
+                        // =========================================================================
+                        // PARTE 2: SERVIDOR (S)
+                        // =========================================================================
+                        logs.add("\n[S] Procesando Mensaje 1..." to Color.Green)
+                        val h1ds = protocol.hashToBytes(ds.toString())
+
+                        // El servidor recupera la identidad real haciendo: IDu = CIDu ⊕ H1(ds)
+                        // Matemáticamente: CIDu ⊕ H1(ds) = IDu ⊕ H1(ds) ⊕ H2(IDu||PW) ⊕ H1(ds) = IDu ⊕ H2(IDu||PW)
+                        // Por lo tanto, para extraer el IDu plano, hacemos XOR con (l ⊕ H2(IDu||PW)) que equivale a H1(ds)
+                        val iduBytesRecuperados = protocol.xorBytes(cidu, h1ds)
+                        val iduRecuperado = String(iduBytesRecuperados, Charsets.UTF_8).trim { it <= ' ' }
+                        logs.add("[S] Identidad recuperada del cliente: '$iduRecuperado'" to Color.Green)
+
+                        val rStar = Ru.multiply(ds) // R* = ds * Ru
+
+                        // El servidor calcula de forma independiente el valor de l ⊕ H2(IDu || PW) usando el IDu que acaba de recuperar
+                        val sH2IduPw = protocol.hashToBytes(iduRecuperado + pw)
+                        val sLXorH2 = protocol.xorBytes(l, sH2IduPw)
+
+                        // Auth_u* = H2(IDu || R* || H1(ds))
+                        logs.add("[S] Calcula Auth_u* = H2(IDu || R* || H1(ds))" to Color.Green)
+                        val authuStar = protocol.hashToBytes(iduRecuperado, rStar, sLXorH2)
+
+                        logs.add("[S] Comparando hashes de autenticación..." to Color.Green)
+                        if (protocol.bytesToHex(authuStar) != protocol.bytesToHex(authu)) {
+                            logs.add(" [S] Error: ¡Auth_u* no coincide con Auth_u! Abortando." to Color.Red)
+                            isRunning = false
+                            return@launch
+                        }
+                        logs.add(" [S] ¡Auth_u Validado con éxito!" to Color.Green)
+
+                        logs.add("[S] Generando SKs..." to Color.Green)
+                        val rs = BigInteger(256, java.security.SecureRandom()).mod(protocol.spec.n)
+                        val Rs = protocol.P.multiply(rs)
+                        val sks = Ru.multiply(rs)
+
+                        // Auths = H2(IDu || R* || SKs)
+                        val auths = protocol.hashToBytes(iduRecuperado, rStar, sks.getEncoded(false))
+
+                        logs.add(" [S -> U]: Enviado Msg 2. {Auth_s, R_s}" to Color.Yellow)
+                        delay(800)
+
+                        // =========================================================================
+                        // PARTE 3: USUARIO (U)
+                        // =========================================================================
+                        logs.add("\n[U] Procesando Mensaje 2..." to Color.Cyan)
+                        val sku = Rs.multiply(ru)
+
+                        // Auth_s* = H2(IDu || R || SKu)
+                        logs.add("[U] Calcula Auth_s* = H2(IDu || R || SKu)" to Color.Cyan)
+                        val authsStar = protocol.hashToBytes(idu, R, sku.getEncoded(false))
+
+                        if (protocol.bytesToHex(authsStar) != protocol.bytesToHex(auths)) {
+                            logs.add(" [U] Error: Servidor no es auténtico." to Color.Red)
+                            isRunning = false
+                            return@launch
+                        }
+                        logs.add(" [U] ¡Servidor verificado exitosamente!" to Color.Cyan)
+
+                        logs.add("[U] Generando SKu..." to Color.Cyan)
+                        val skUsuario = protocol.kdf(idu + protocol.bytesToHex(sku.getEncoded(false)))
+                        logs.add("[U]  SK Acordada (Móvil): ${protocol.bytesToHex(skUsuario).take(16)}..." to Color.Cyan)
+
+                        // Auth_us = H2(R || SKu)
+                        val authus = protocol.hashToBytes("", R, sku.getEncoded(false))
+
+                        logs.add(" [U -> S]: Enviando Msg 3 de Confirmación Final {Auth_us}" to Color.Yellow)
+                        delay(800)
+
+                        // =========================================================================
+                        // PARTE 4: SERVIDOR (S)
+                        // =========================================================================
+                        logs.add("\n[S] Procesando Mensaje 3..." to Color.Green)
+                        // Auth_us* = H2(R* || SKs)
+                        val authusStar = protocol.hashToBytes("", rStar, sks.getEncoded(false))
+
+                        if (protocol.bytesToHex(authusStar) != protocol.bytesToHex(authus)) {
+                            logs.add(" [S] Error: Confirmación final inválida." to Color.Red)
+                            isRunning = false
+                            return@launch
+                        }
+
+                        logs.add(" [S] ¡Confirmación final aceptada!" to Color.Green)
+                        val skServidor = protocol.kdf(iduRecuperado + protocol.bytesToHex(sks.getEncoded(false)))
+                        logs.add("[S]  SK Acordada (Servidor): ${protocol.bytesToHex(skServidor).take(16)}..." to Color.Green)
+
+                        delay(400)
+                        logs.add("\n [SISTEMA] ¡Intercambio completado y verificado en ambas partes!" to Color.Magenta)
+
+                    } catch (e: Exception) {
+                        logs.add(" EXCEPCIÓN: ${e.message}" to Color.Red)
+                        e.printStackTrace()
+                    } finally {
+                        isRunning = false
                     }
-                    
-                    isRunning = false
                 }
             },
             enabled = !isRunning,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(Icons.Default.Send, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Iniciar Protocolo")
-        }
-
-        // Simulación de "Archivo Descifrado"
-        AnimatedVisibility(visible = step == 3) {
-            Card(
-                modifier = Modifier.padding(top = 16.dp).fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.White)
-            ) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFF4CAF50))
-                    Spacer(Modifier.width(12.dp))
-                    Text("PDF Descifrado: 'Reporte_Medico.pdf'", style = MaterialTheme.typography.bodyMedium)
-                }
-            }
+            Text(if (isRunning) "Calculando ECC..." else "Correr Protocolo Completo")
         }
     }
 }

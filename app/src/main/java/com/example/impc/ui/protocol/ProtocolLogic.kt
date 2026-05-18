@@ -8,51 +8,45 @@ import java.security.MessageDigest
 
 class ProtocolLogic {
     val spec: ECNamedCurveParameterSpec = ECNamedCurveTable.getParameterSpec("secp256r1")
-    private val P = spec.g
+    val P: ECPoint = spec.g
 
-    // Hash H2 (SHA-256)
-    fun h2(data: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(data.toByteArray())
+    // Retorna el hash directamente en bytes para poder operar con él de forma segura
+    fun hashToBytes(data: String, point: ECPoint? = null, extraBytes: ByteArray? = null): ByteArray {
+        val digest = MessageDigest.getInstance("SHA-256")
+        if (data.isNotEmpty()) {
+            digest.update(data.toByteArray(Charsets.UTF_8))
+        }
+        point?.let {
+            // getEncoded(false) nos da los bytes del punto normalizados (idénticos en cliente y servidor)
+            digest.update(it.getEncoded(false))
+        }
+        extraBytes?.let {
+            digest.update(it)
+        }
+        return digest.digest()
+    }
+
+    // Convierte bytes a una cadena legible Hexadecimal (solo para mostrar en los logs)
+    fun bytesToHex(bytes: ByteArray): String {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
-    // Operación XOR para strings
-    fun xor(a: String, b: String): String {
-        val aBytes = a.toByteArray()
-        val bBytes = b.toByteArray()
-        val res = ByteArray(minOf(aBytes.size, bBytes.size))
-        for (i in res.indices) res[i] = (aBytes[i].toInt() xor bBytes[i].toInt()).toByte()
-        return res.decodeToString()
+    // Operación XOR nativa y segura entre arreglos de bytes de cualquier tamaño
+    fun xorBytes(a: ByteArray, b: ByteArray): ByteArray {
+        val len = maxOf(a.size, b.size)
+        val res = ByteArray(len)
+        for (i in 0 until len) {
+            val byteA = if (i < a.size) a[i].toInt() else 0
+            val byteB = if (i < b.size) b[i].toInt() else 0
+            res[i] = (byteA xor byteB).toByte()
+        }
+        return res
     }
 
-    // Paso 1: Usuario genera solicitud
-    fun step1User(idu: String, pw: String, l: String, qs: ECPoint): Map<String, Any> {
-        val ru = BigInteger(256, java.security.SecureRandom()).mod(spec.n)
-        val Ru = P.multiply(ru) // Ru = ru * P
-        val R = qs.multiply(ru)  // R = ru * Qs
-
-        val h2IDuPW = h2(idu + pw)
-        val cidu = xor(idu, xor(l, h2IDuPW)) // CIDu
-        val authu = h2(idu + R.toString() + xor(l, h2IDuPW)) // Authu
-
-        return mapOf("auth_u" to authu, "cid_u" to cidu, "ru" to Ru, "internal_ru" to ru, "R" to R)
-    }
-
-    // Paso 2 y 3: Servidor procesa y responde a la solicitud
-    fun step2Server(msg1: Map<String, Any>, ds: BigInteger): Map<String, Any>? {
-        val cidu = msg1["cid_u"] as String
-        val ruPoint = msg1["ru"] as ECPoint
-        val h1ds = h2(ds.toString()) // Simulación H1(ds)
-
-        val idu = xor(cidu, h1ds) // Recupera IDu
-        val rStar = ruPoint.multiply(ds) // R* = ds * Ru
-
-        val rs = BigInteger(256, java.security.SecureRandom()).mod(spec.n)
-        val Rs = P.multiply(rs) // Rs = rs * P
-        val sks = ruPoint.multiply(rs) // SKs = rs * Ru
-
-        val auths = h2(idu + rStar.toString() + sks.toString()) // Auths
-
-        return mapOf("auth_s" to auths, "rs" to Rs, "idu" to idu, "sks" to sks)
+    fun kdf(data: String): ByteArray {
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update("KDF_SALT_".toByteArray(Charsets.UTF_8))
+        digest.update(data.toByteArray(Charsets.UTF_8))
+        return digest.digest()
     }
 }
